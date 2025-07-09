@@ -41,7 +41,16 @@ sign.add_element(Arrow(108, direction="right"))
 sign.save("line_3_right.png")
 ```
 
-之后可以在当前目录下找到生成的 `sign.png` 文件。更多示例可参考 `example.py` 文件。
+之后可以在当前目录下找到生成的 `line_3_right.png` 文件。像这样：
+
+![line_3_right](line_3_right.png)
+
+更多示例可参考 `example.py` 文件。
+
+![platform_sign](platform_sign.png)
+![century_avenue_sign](century_avenue.png)
+![exit_sign](exit_sign.png)
+![airport_link_line](airport_link_line.png)
 
 ## 颜色配置文件
 
