@@ -1,5 +1,6 @@
 import csv
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from math import ceil
 from typing import Literal, NamedTuple, Union
 
@@ -9,6 +10,7 @@ DEFAULT_FONT = "C:/Windows/Fonts/simhei.ttf"  # 黑体字体
 DEFAULT_EN_FONT = "C:/Windows/Fonts/Arial.ttf"  # 英文字体
 
 EXIT_COLOR = "#FFD10F"
+SUBURBAN_COLOR = "#026AA7"  # 市域铁路颜色
 
 
 ColorType = Union[float, tuple[int, ...], str]
@@ -41,7 +43,13 @@ def get_color(line: int | str) -> tuple[str, str]:
 
 
 class Element(ABC):
-    """导向标识牌上的各个元素"""
+    """
+    导向标识牌元素，抽象基类。
+
+    子类应当实现：
+    - `get_size` 方法，返回一个`Size`对象，表示元素的宽高。
+    - `draw` 方法，绘制元素到指定位置。
+    """
 
     def __init__(self, size: int, color: ColorType = "white"):
         """
@@ -71,12 +79,10 @@ class Element(ABC):
 
     @property
     def width(self) -> int:
-        """获取元素的宽度。"""
         return self.get_size().width
 
     @property
     def height(self) -> int:
-        """获取元素的高度。"""
         return self.get_size().height
 
 
@@ -231,7 +237,7 @@ class BilingualText(Element):
         text: str,
         text_en: str,
         color: ColorType = "white",
-        align: Literal["left", "right"] = "left",
+        align: Literal["left", "right", "center"] = "left",
     ):
         """
         初始化文本元素。
@@ -269,6 +275,12 @@ class BilingualText(Element):
                 x + max_width - self.text_en_width - self.size // 30,
                 y + self.size * 2 // 3,
             )
+        elif self.align == "center":
+            text_pos = (x + (max_width - self.text_width) // 2, y)
+            en_text_pos = (
+                x + (max_width - self.text_en_width) // 2,
+                y + self.size * 2 // 3,
+            )
 
         draw.text(
             text_pos,
@@ -288,7 +300,7 @@ class BilingualText(Element):
 class ExitSign(Element):
     """出口标识"""
 
-    def __init__(self, size: int, code: str, color: ColorType = EXIT_COLOR):
+    def __init__(self, size: int, code: str = "", color: ColorType = EXIT_COLOR):
         """
         初始化出口标识。
 
@@ -400,7 +412,9 @@ class NumberLine(Element):
 
 
 class Sign:
-    """地铁站导向标识牌"""
+    """
+    导向标识牌
+    """
 
     def __init__(
         self,
@@ -416,13 +430,20 @@ class Sign:
             width (int): 标识牌的宽度。
             height (int): 标识牌的高度。
             background_color (ColorType): 标识牌的背景颜色，默认为黑色。
+            padding (int | None): 元素之间的间距，默认为高度的1/12。
         """
         self.width = width
         self.height = height
         self.image = Image.new("RGBA", (width, height), background_color)
         self.draw = ImageDraw.Draw(self.image)
         self.padding = padding if padding is not None else height // 12
-        self.elements: list[tuple[Literal["left", "right", "middle"], Element]] = []
+        self.elements: dict[
+            tuple[
+                Literal["top", "middle", "bottom"],
+                Literal["left", "right", "center"],
+            ],
+            list[Element],
+        ] = defaultdict(list)
 
     def save(self, filename: str) -> None:
         """
@@ -431,40 +452,47 @@ class Sign:
         Args:
             filename (str): 保存的文件名。
         """
-        left_elements = [e for align, e in self.elements if align == "left"]
-        pos_x = self.padding
-        pos_y = self.padding
-        for element in left_elements:
-            element.draw(self.draw, pos_x, pos_y)
-            pos_x += element.width + self.padding
+        for (valign, align), elements in self.elements.items():
+            if not elements:
+                continue
 
-        middle_elements = [e for align, e in self.elements if align == "middle"]
-        pos_x = (
-            self.width
-            - sum(e.width for e in middle_elements)
-            - self.padding * (len(middle_elements) - 1)
-        ) // 2
-        for element in middle_elements:
-            element.draw(self.draw, pos_x, pos_y)
-            pos_x += element.width + self.padding
+            # 计算元素的最大高度
+            max_height = max(e.height for e in elements)
+            # 计算元素的总宽度
+            total_width = sum(e.width for e in elements) + self.padding * (len(elements) - 1)
 
-        right_elements = [e for align, e in self.elements if align == "right"]
-        pos_x = self.width - self.padding
-        for element in right_elements[::-1]:  # 从右向左绘制
-            pos_x -= element.width
-            element.draw(self.draw, pos_x, pos_y)
-            pos_x -= self.padding
+            if valign == "top":
+                pos_y = self.padding
+            elif valign == "middle":
+                pos_y = (self.height - max_height) // 2
+            elif valign == "bottom":
+                pos_y = self.height - max_height - self.padding
+
+            if align == "left":
+                pos_x = self.padding
+            elif align == "center":
+                pos_x = (self.width - total_width) // 2
+            elif align == "right":
+                pos_x = self.width - total_width - self.padding
+
+            for element in elements:
+                element.draw(self.draw, pos_x, pos_y)
+                pos_x += element.width + self.padding
 
         self.image.save(filename)
 
     def add_element(
-        self, element: Element, align: Literal["left", "right", "middle"] = "left"
+        self,
+        element: Element,
+        align: Literal["left", "right", "center"] = "left",
+        valign: Literal["top", "middle", "bottom"] = "middle",
     ) -> None:
         """
         添加元素到标识牌。
 
         Args:
             element (Element): 要添加的元素。
-            align (Literal["left", "right", "middle"]): 元素的对齐方式，默认为左对齐。
+            align (Literal["left", "right", "center"]): 元素的对齐方式，默认为左对齐。
+            valign (Literal["top", "middle", "bottom"]): 元素的垂直对齐方式，默认为居中对齐。
         """
-        self.elements.append((align, element))
+        self.elements[(valign, align)].append(element)
